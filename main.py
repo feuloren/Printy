@@ -305,17 +305,7 @@ class Window(Gtk.Window):
         cr.rectangle(0, 0, self.imgwidth, self.imgheight)
         cr.fill()
 
-    def __init__(self):
-        Gtk.Window.__init__(self)
-        self.connect("delete-event", lambda a, b: quit())
-        self.get_settings().set_property("gtk-application-prefer-dark-theme", True)
-        self.set_hide_titlebar_when_maximized(True)
-        self.maximize()
-
-        self.notebook = Gtk.Notebook()
-        self.notebook.set_show_tabs(False)
-        self.add(self.notebook)
-
+    def __init_viewer(self):
         viewerBox = Gtk.VBox()
         self.notebook.append_page(viewerBox, Gtk.Label("Viewer"))
 
@@ -355,6 +345,24 @@ class Window(Gtk.Window):
         controlBox.pack_end(previousButton, False, False, 5)
 
         self.progressBar, self.nbLabel, self.totalLabel, self.drawingArea = progressBar, nbLabel, totalLabel, drawingArea
+
+    def __init_home(self):
+        bigBox = Gtk.VBox()
+        self.notebook.append_page(bigBox, Gtk.Label("Home"))
+
+    def __init__(self):
+        Gtk.Window.__init__(self)
+        self.connect("delete-event", lambda a, b: quit())
+        self.get_settings().set_property("gtk-application-prefer-dark-theme", True)
+        self.set_hide_titlebar_when_maximized(True)
+        self.maximize()
+
+        self.notebook = Gtk.Notebook()
+        self.notebook.set_show_tabs(False)
+        self.add(self.notebook)
+
+        #self.__init_home()
+        self.__init_viewer()
 
 if __name__ == "__main__":
     w = Window()
