@@ -1,12 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from gi.repository import Gtk, GdkPixbuf
+from gi.repository import Gtk, GdkPixbuf, GLib, GObject
 import os.path
 
 #modes
 (SUBDIR,
 DUPLICATE) = range(2)
+#tree model columns
+(COLUMN_NAME,
+COLUMN_STATE,
+COLUMN_URL) = range(3)
 
 class DirDoesntExist(IOError):
     def __init__(self, string):
@@ -21,19 +25,15 @@ class BadStateFile(StandardError):
         self.message = string
 
 class State(object):
-    pictures = [];
-    counts = {};
-    state = "Paused";
-    paused_picture = "";
-    file_uri = "";
-
     def __del__(self):
         self.save()
 
     def save(self):
-        with file(self.file_uri, "w") as statefile:
+        with open(self.file_uri, "w") as statefile:
             if self.state == "Paused":
-                statefile.write("Paused/" +self. paused_picture + "\n")
+                statefile.write("Paused/" +self.paused_picture + "\n")
+            else:
+                statefile.write(self.state + "\n")
             for pic in self.pictures:
                 statefile.write(pic + "/" + str(self.counts[pic]) + "\n")
 
@@ -66,11 +66,16 @@ class State(object):
             raise BadStateFile(line)
 
     def __init__(self, file_uri):
+        self.pictures = []
+        self.counts = {}
+        self.state = "Paused"
+        self.paused_picture = ""
+
         if not(os.path.isfile(file_uri)):
             raise FileDoesntExist(file_uri)
         self.file_uri = file_uri
 
-        with file(file_uri, "r") as statefile:
+        with open(file_uri, "r") as statefile:
             self.__restore_state(statefile.readline())
             line = statefile.readline()
             while line:
@@ -89,21 +94,19 @@ class Manager(object):
     """The Manager deals with directories listing and plain text file management
     so that the Window doesn't have to care about IO except for loading the pictures
     """
-    root_dirs = []
-    directories = {}
-    settings_file = ""
 
     def __del__(self):
         self.save()
 
     def save(self):
-        with file(self.settings_file, "w") as sfile:
+        with open(self.settings_file, "w") as sfile:
             for root in self.root_dirs:
                 sfile.write(root + "\n")
 
-    def get_user_directories(self):
+    def get_directories(self):
         """Returns: a tuple ((Dir_Name, State, (Subdir))...)"""
-        pass
+        for i in self.directories:
+            yield (i, self.directories[i])
 
     def export_to_directory(self, directory, dir_listing, mode):
         """Export all the pictures marked for export in the directories given in parameter"""
@@ -128,7 +131,7 @@ class Manager(object):
     def __get_dir_state(self, url):
         statefile = os.path.join(url, ".printy_state")
         if (os.path.isfile(statefile)):
-            with file(statefile, "r") as sfile:
+            with open(statefile, "r") as sfile:
                 line = sfile.readline()
                 if line is '':
                     return "None"
@@ -147,12 +150,16 @@ class Manager(object):
         self.directories[dirname] = state
 
     def __init__(self):
+        self.root_dirs = []
+        self.directories = {}
+        self.settings_file = ""
+
         #first we read the list of root dirs
         self.settings_file = os.path.join(os.path.expanduser("~/.local/share"), "printy/settings")
         if not(os.path.isfile(self.settings_file)):
-            file(settings_file, "w")
+            open(settings_file, "w")
 
-        with file(self.settings_file, "r") as sfile:
+        with open(self.settings_file, "r") as sfile:
             line = sfile.readline()
             while line:
                 url = line.split("\n")[0]
@@ -166,9 +173,6 @@ class Manager(object):
 
 class Dir(object):
     """Represents a directory and manages its hidden file"""
-    directory = None
-    current_picture = None
-    state = None
 
     def __del__(self):
         del self.state
@@ -215,7 +219,7 @@ class Dir(object):
         return total
 
     def get_current_picture_number(self):
-        return self.state.pictures.index(self.current_image) + 1
+        return self.state.pictures.index(self.current_picture) + 1
 
     def get_nb_pictures(self):
         """Returns the number of pictures in this directory"""
@@ -223,6 +227,12 @@ class Dir(object):
 
     def get_state(self):
         return self.state.state
+
+    def set_finished(self):
+        self.state.set_finished()
+
+    def set_exported(self):
+        self.state.set_exported()
 
     def pause(self):
         """Pause the processing of this directory"""
@@ -244,7 +254,7 @@ class Dir(object):
                 else:
                     del fnames[index]
 
-        with file(sfile, "w") as statefile:
+        with open(sfile, "w") as statefile:
             os.path.walk(self.directory, do_dir, statefile)
 
     def __init__(self, directory):
@@ -257,7 +267,10 @@ class Dir(object):
             self.__fill_state_file(sfile)
 
         self.state = State(sfile)
-        self.current_picture = self.state.paused_picture
+        if self.state.paused_picture != "":
+            self.current_picture = self.state.paused_picture
+        else:
+            self.current_picture = self.state.pictures[0]
 
 class CountLabel(Gtk.Label):
     singular_message = "%s"
@@ -286,7 +299,9 @@ class MagicImage(Gtk.DrawingArea):
     image_url = ""
 
     def set_image(self, url):
-        pass
+        if not(os.path.isfile(url)):
+            raise FileDoesntExist()
+        self.image_url = url
 
     def __draw(self, widget, cr):
         width, height = widget.get_allocated_width(), widget.get_allocated_height()
@@ -325,6 +340,31 @@ class Window(Gtk.Window):
     """Display the pictures, the total count, progress bar..."""
     workingDir = None
 
+    def reload_viewer(self):
+        nb = self.workingDir.get_current_picture_number()
+        self.nbLabel.set_count(nb)
+        self.totalLabel.set_count(self.workingDir.get_total_count())
+        self.drawingArea.set_image(self.workingDir.get_current_picture_uri())
+        fraction = float(nb-1) / self.workingDir.get_nb_pictures()
+        self.progressBar.set_fraction(fraction)
+
+        self.notebook.set_current_page(1)
+
+    def set_count(self, count):
+        if not(self.workingDir):
+            return
+        next_pic = self.workingDir.set_count(count)
+        self.process_move(next_pic)
+
+    def process_move(self, next_pic):
+        if next_pic:
+            self.reload_viewer()
+        else:
+            if self.workingDir.get_current_picture_number() != 1:
+#Show a little dialog that says "hey there is no more pictures to process" and give the number of pictures to print
+                self.workingDir.set_finished()
+                self.notebook.set_current_page(0)
+
     def __init_viewer(self):
         viewerBox = Gtk.VBox()
         self.notebook.append_page(viewerBox, Gtk.Label("Viewer"))
@@ -344,28 +384,104 @@ class Window(Gtk.Window):
 
         controlBox = Gtk.HBox(False, 5)
         viewerBox.pack_start(controlBox, False, False, 5)
+        def back():
+            self.workingDir.pause()
+            self.workingDir = None
+            self.notebook.set_current_page(0)
         backButton = Gtk.Button("< Retour")
+        backButton.connect("clicked", lambda b: back())
         controlBox.pack_start(backButton, False, False, 5)
+
         space1 = Gtk.Label(" ")
         controlBox.pack_start(space1, True, True, 5)
-        for i in range(4):
+
+        #count buttons
+        def get_count_button(button):
+            try:
+                no = int(button.get_label())
+            except ValueError:
+                print "Caught you bitch !"
+                return
+            self.set_count(no)
+        for i in range(5):
             button = Gtk.Button(str(i))
             controlBox.pack_start(button, False, False, 5)
+            button.connect("clicked", get_count_button)
+
         space2 = Gtk.Label(" ")
         controlBox.pack_start(space2, True, True, 5)
+
+        #Navigation buttons
         nextButton = Gtk.Button("Suivant >")
+        def next_picture():
+            if self.workingDir:
+                self.process_move(self.workingDir.next_picture())
+        nextButton.connect("clicked", lambda b: next_picture())
         controlBox.pack_end(nextButton, False, False, 5)
         previousButton = Gtk.Button("< Précédent")
+        def prev_picture():
+            if self.workingDir:
+                self.process_move(self.workingDir.previous_picture())
+        previousButton.connect("clicked", lambda b: prev_picture())
         controlBox.pack_end(previousButton, False, False, 5)
 
         self.progressBar, self.nbLabel, self.totalLabel, self.drawingArea = progressBar, nbLabel, totalLabel, drawingArea
 
     def __init_home(self):
-        bigBox = Gtk.VBox()
+        bigBox = Gtk.VBox(False, 5)
         self.notebook.append_page(bigBox, Gtk.Label("Home"))
 
-    def __init__(self):
+        #Welcome labels
+        welcome = Gtk.Label("<big><b>Bienvenue</b></big>")
+        welcome.set_use_markup(True)
+        welcome.set_justify(Gtk.Justification.LEFT)
+        bigBox.pack_start(welcome, False, False, 5)
+        welcome2 = Gtk.Label("Double cliquez sur le dossier à traiter\nou choisissez \"Ajouter un dossier d'images\" pour définir les dossier contenants vos photos")
+        welcome2.set_justify(Gtk.Justification.LEFT)
+        bigBox.pack_start(welcome2, False, False, 5)
+
+        #Directories view
+        scroll = Gtk.ScrolledWindow()
+        bigBox.pack_start(scroll, True, True, 5)
+
+        view = Gtk.TreeView()
+        view.set_headers_visible(False)
+        def row_activated(widget, path, column):
+            url = self.tree[path][COLUMN_URL]
+            self.workingDir = Dir(url)
+            self.reload_viewer()
+        view.connect("row-activated", row_activated)
+        scroll.add(view)
+
+        text = Gtk.CellRendererText()
+        col = Gtk.TreeViewColumn("Nom du dossier")
+        col.pack_start(text, True)
+        col.add_attribute(text, "text", COLUMN_NAME)
+        view.append_column(col)
+
+        self.tree = Gtk.TreeStore(GObject.TYPE_STRING, GObject.TYPE_STRING, GObject.TYPE_STRING)
+        self.tree.set_sort_column_id(COLUMN_NAME, Gtk.SortType.ASCENDING)
+        view.set_model(self.tree)
+
+        #Action buttons
+        controlBox = Gtk.HBox(True, 0)
+        bigBox.pack_start(controlBox, False, False, 5)
+
+        add_dirButton = Gtk.Button("Ajouter un dossier de photos")
+        exportButton = Gtk.Button("Exporter les images sélectionnées")
+        controlBox.pack_start(add_dirButton, True, True, 5)
+        controlBox.pack_start(exportButton, True, True, 5)
+
+    def __fill_view(self):
+        for dir_info in self.manager.get_directories():
+            iter_ = self.tree.append(None)
+            self.tree.set(iter_, COLUMN_NAME, os.path.basename(dir_info[0]),
+                          COLUMN_STATE, dir_info[1],
+                          COLUMN_URL, dir_info[0])
+
+    def __init__(self, manager):
         Gtk.Window.__init__(self)
+        self.set_title("Printy")
         self.connect("delete-event", lambda a, b: quit())
         self.get_settings().set_property("gtk-application-prefer-dark-theme", True)
         self.set_hide_titlebar_when_maximized(True)
@@ -375,10 +491,15 @@ class Window(Gtk.Window):
         self.notebook.set_show_tabs(False)
         self.add(self.notebook)
 
-        #self.__init_home()
+        self.__init_home()
         self.__init_viewer()
 
+        self.manager = manager
+        self.__fill_view()
+
 if __name__ == "__main__":
-    w = Window()
+    m = Manager()
+    w = Window(m)
     w.show_all()
+    w.notebook.set_current_page(0)
     Gtk.main()
