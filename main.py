@@ -3,6 +3,7 @@
 
 from gi.repository import Gtk, GdkPixbuf, GLib, GObject
 import os.path
+import copy
 
 #modes
 (SUBDIR,
@@ -58,8 +59,9 @@ class State(object):
     def __restore_state(self, line):
         var = line.split("/")
         try:
-            if var[0] in ("Paused", "Finished", "Exported"):
-                self.state = var[0]
+            s = var[0].split("\n")[0]
+            if s in ("Paused", "Finished", "Exported"):
+                self.state = s
                 if self.state == "Paused":
                     self.paused_picture = var[1].split("\n")[0]
         except IndexError:
@@ -136,7 +138,7 @@ class Manager(object):
                 if line is '':
                     return "None"
 
-                state = line.split("/")[0]
+                state = line.split("/")[0].split("\n")[0]
                 if state in ("Paused", "Finished", "Exported"):
                     return state
                 else:
@@ -428,6 +430,11 @@ class Window(Gtk.Window):
         self.progressBar, self.nbLabel, self.totalLabel, self.drawingArea = progressBar, nbLabel, totalLabel, drawingArea
 
     def __init_home(self):
+        def row_activated(widget, path, column):
+            url = self.tree[path][COLUMN_URL]
+            self.workingDir = Dir(url)
+            self.reload_viewer()
+
         bigBox = Gtk.VBox(False, 5)
         self.notebook.append_page(bigBox, Gtk.Label("Home"))
 
@@ -446,12 +453,14 @@ class Window(Gtk.Window):
 
         view = Gtk.TreeView()
         view.set_headers_visible(False)
-        def row_activated(widget, path, column):
-            url = self.tree[path][COLUMN_URL]
-            self.workingDir = Dir(url)
-            self.reload_viewer()
         view.connect("row-activated", row_activated)
         scroll.add(view)
+
+        text = Gtk.CellRendererText()
+        col = Gtk.TreeViewColumn("S")
+        col.pack_start(text, False)
+        col.add_attribute(text, "text", COLUMN_STATE)
+        view.append_column(col)
 
         text = Gtk.CellRendererText()
         col = Gtk.TreeViewColumn("Nom du dossier")
@@ -462,6 +471,7 @@ class Window(Gtk.Window):
         self.tree = Gtk.TreeStore(GObject.TYPE_STRING, GObject.TYPE_STRING, GObject.TYPE_STRING)
         self.tree.set_sort_column_id(COLUMN_NAME, Gtk.SortType.ASCENDING)
         view.set_model(self.tree)
+        self.view = view
 
         #Action buttons
         controlBox = Gtk.HBox(True, 0)
@@ -473,11 +483,36 @@ class Window(Gtk.Window):
         controlBox.pack_start(exportButton, True, True, 5)
 
     def __fill_view(self):
-        for dir_info in self.manager.get_directories():
-            iter_ = self.tree.append(None)
-            self.tree.set(iter_, COLUMN_NAME, os.path.basename(dir_info[0]),
-                          COLUMN_STATE, dir_info[1],
-                          COLUMN_URL, dir_info[0])
+        """Une fonction toute pleine de récursion :-)"""
+        dirs = copy.copy(self.manager.directories)
+        iters = {}
+
+        def do(url):
+            if not(iters.has_key(url)):
+                parent = get_or_make_parent(url)
+                return add(parent, url)
+
+        def add(parent, url):
+            iters[url] = iter_ = self.tree.append(parent)
+            self.tree.set(iter_, COLUMN_NAME, os.path.basename(url),
+                          COLUMN_STATE, dirs[url],
+                          COLUMN_URL, url)
+            return iter_
+
+        def get_or_make_parent(url):
+            root = os.path.dirname(url)
+            if dirs.has_key(root):
+                if iters.has_key(root):
+                    return iters[root]
+                else:
+                    return do(root)
+            else:
+                return None
+
+        for url in dirs:
+            do(url)
+
+        self.view.expand_all()
 
     def __init__(self, manager):
         Gtk.Window.__init__(self)
