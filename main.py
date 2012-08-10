@@ -278,14 +278,17 @@ class CountLabel(Gtk.Label):
         self.plural_message = plural
         self.set_count(count)
 
-class Window(Gtk.Window):
-    """Display the pictures, the total count, progress bar..."""
+class MagicImage(Gtk.DrawingArea):
     hsize = 0
     vsize = 0
     imgheight = 0
     imgwidth = 0
+    image_url = ""
 
-    def __draw_cb(self, widget, cr):
+    def set_image(self, url):
+        pass
+
+    def __draw(self, widget, cr):
         width, height = widget.get_allocated_width(), widget.get_allocated_height()
         if width != self.hsize or height != self.vsize:
             self.hsize, self.vsize = width, height
@@ -305,6 +308,23 @@ class Window(Gtk.Window):
         cr.rectangle(0, 0, self.imgwidth, self.imgheight)
         cr.fill()
 
+    def __configure(self, widget, event):
+        pass
+
+    def __init__(self):
+        Gtk.DrawingArea.__init__(self)
+        self.set_size_request(640, 480)
+        self.connect("draw", self.__draw)
+        self.set_hexpand(True)
+        self.set_vexpand(True)
+
+        self.p = GdkPixbuf.Pixbuf.new_from_file("/home/florent/Images/4137393_700b.jpg")#"/home/florent/Images/2005-11 Paris grand palais/Paris Grand Palais-11.JPG")
+        self.imgwidth, self.imgheight = self.p.get_width(), self.p.get_height()
+
+class Window(Gtk.Window):
+    """Display the pictures, the total count, progress bar..."""
+    workingDir = None
+
     def __init_viewer(self):
         viewerBox = Gtk.VBox()
         self.notebook.append_page(viewerBox, Gtk.Label("Viewer"))
@@ -319,13 +339,7 @@ class Window(Gtk.Window):
         infoBox.pack_start(progressBar, True, True, 5)
         infoBox.pack_start(totalLabel, False, False, 5)
 
-        self.p = GdkPixbuf.Pixbuf.new_from_file("/home/florent/Images/4137393_700b.jpg")#"/home/florent/Images/2005-11 Paris grand palais/Paris Grand Palais-11.JPG")
-        self.imgwidth, self.imgheight = self.p.get_width(), self.p.get_height()
-        drawingArea = Gtk.DrawingArea()
-        drawingArea.set_size_request(640, 480)
-        drawingArea.connect("draw", self.__draw_cb)
-        drawingArea.set_hexpand(True)
-        drawingArea.set_vexpand(True)
+        drawingArea = MagicImage()
         viewerBox.pack_start(drawingArea, True, True, 0)
 
         controlBox = Gtk.HBox(False, 5)
