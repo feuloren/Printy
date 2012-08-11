@@ -12,6 +12,10 @@ DUPLICATE) = range(2)
 (COLUMN_NAME,
 COLUMN_STATE,
 COLUMN_URL) = range(3)
+#states
+STATES = (NONE, PAUSED, FINISHED,
+          EXPORTED) = ("None", "Paused",
+                       "Finished", "Exported")
 
 class DirDoesntExist(IOError):
     def __init__(self, string):
@@ -31,8 +35,8 @@ class State(object):
 
     def save(self):
         with open(self.file_uri, "w") as statefile:
-            if self.state == "Paused":
-                statefile.write("Paused/" +self.paused_picture + "\n")
+            if self.state == PAUSED:
+                statefile.write(PAUSED + "/" +self.paused_picture + "\n")
             else:
                 statefile.write(self.state + "\n")
             for pic in self.pictures:
@@ -43,16 +47,16 @@ class State(object):
             self.counts[picture] = count
 
     def set_exported(self):
-        self.state = "Exported"
+        self.state = EXPORTED
         self.save()
 
     def set_finished(self):
-        self.state = "Finished"
+        self.state = FINISHED
         self.save()
 
     def pause(self, picture):
         if picture in self.pictures:
-            self.state = "Paused"
+            self.state = PAUSED
             self.paused_picture = picture
             self.save()
 
@@ -60,9 +64,9 @@ class State(object):
         var = line.split("/")
         try:
             s = var[0].split("\n")[0]
-            if s in ("Paused", "Finished", "Exported"):
+            if s in STATES:
                 self.state = s
-                if self.state == "Paused":
+                if self.state == PAUSED:
                     self.paused_picture = var[1].split("\n")[0]
         except IndexError:
             raise BadStateFile(line)
@@ -70,7 +74,7 @@ class State(object):
     def __init__(self, file_uri):
         self.pictures = []
         self.counts = {}
-        self.state = "Paused"
+        self.state = NONE
         self.paused_picture = ""
 
         if not(os.path.isfile(file_uri)):
@@ -80,7 +84,7 @@ class State(object):
         with open(file_uri, "r") as statefile:
             self.__restore_state(statefile.readline())
             line = statefile.readline()
-            while line:
+            while line != "" and line != "\n" and line != None:
                 a = line.split("/")
                 line = statefile.readline()
                 try:
@@ -130,22 +134,26 @@ class Manager(object):
                 if subdir.startswith(url):
                     del self.directories[subdir]
 
+    def update_dir_state(self, url, state):
+        if state in STATES and self.directories.has_key(url):
+            self.directories[url] = state
+
     def __get_dir_state(self, url):
         statefile = os.path.join(url, ".printy_state")
         if (os.path.isfile(statefile)):
             with open(statefile, "r") as sfile:
                 line = sfile.readline()
                 if line is '':
-                    return "None"
+                    return NONE
 
                 state = line.split("/")[0].split("\n")[0]
-                if state in ("Paused", "Finished", "Exported"):
+                if state in STATES:
                     return state
                 else:
-                    return "None"
+                    return NONE
 
         else:
-            return "None"
+            return NONE
 
     def __index_dir(self, arg, dirname, fnames):
         state = self.__get_dir_state(dirname)
@@ -245,16 +253,12 @@ class Dir(object):
         of 0 for each picture.
         State is set to Paused on first picture found"""
         def do_dir(statefile, dirname, fnames):
-            i = 0;
             fnames.sort()
+            statefile.write(NONE + "\n")
             for index, pic in enumerate(fnames):
-                if(os.path.isfile(os.path.join(dirname, pic)) and not(pic[0] is '.')):
-                    if i is 0:
-                        statefile.write("Paused/" + pic + "\n")
-                        i += 1;
+                if not(os.path.isdir(os.path.join(dirname, pic))) and pic[0] != '.':
                     statefile.write(pic + "/0\n")
-                else:
-                    del fnames[index]
+            del fnames[:]
 
         with open(sfile, "w") as statefile:
             os.path.walk(self.directory, do_dir, statefile)
@@ -365,7 +369,18 @@ class Window(Gtk.Window):
             if self.workingDir.get_current_picture_number() != 1:
 #Show a little dialog that says "hey there is no more pictures to process" and give the number of pictures to print
                 self.workingDir.set_finished()
-                self.notebook.set_current_page(0)
+                self.reload_home()
+
+    def reload_home(self):
+        if self.workingDir:
+            state = self.workingDir.get_state()
+            url = self.workingDir.directory
+            self.workingDir = None
+
+            self.manager.update_dir_state(url, state)
+            self.__fill_view()
+
+        self.notebook.set_current_page(0)
 
     def __init_viewer(self):
         viewerBox = Gtk.VBox()
@@ -388,8 +403,7 @@ class Window(Gtk.Window):
         viewerBox.pack_start(controlBox, False, False, 5)
         def back():
             self.workingDir.pause()
-            self.workingDir = None
-            self.notebook.set_current_page(0)
+            self.reload_home()
         backButton = Gtk.Button("< Retour")
         backButton.connect("clicked", lambda b: back())
         controlBox.pack_start(backButton, False, False, 5)
@@ -437,10 +451,10 @@ class Window(Gtk.Window):
 
         def set_icon(col, cell, model, iter_, data):
             state = model[iter_][COLUMN_STATE]
-            icons = {"Paused": Gtk.STOCK_MEDIA_PAUSE,
-                     "Finished": Gtk.STOCK_APPLY,
-                     "Exported": Gtk.STOCK_FLOPPY,
-                     "None": Gtk.STOCK_DIRECTORY}
+            icons = {PAUSED: Gtk.STOCK_MEDIA_PAUSE,
+                     FINISHED: Gtk.STOCK_APPLY,
+                     EXPORTED: Gtk.STOCK_FLOPPY,
+                     NONE: Gtk.STOCK_DIRECTORY}
             cell.set_property("stock-id", icons[state])
 
         bigBox = Gtk.VBox(False, 5)
