@@ -352,6 +352,9 @@ class Window(Gtk.Window):
     """Display the pictures, the total count, progress bar..."""
     workingDir = None
 
+    def export(self):
+        print "I'm gonna export"
+
     def reload_viewer(self):
         nb = self.workingDir.get_current_picture_number()
         nb_pictures = self.workingDir.get_nb_pictures()
@@ -467,6 +470,17 @@ class Window(Gtk.Window):
                      NONE: Gtk.STOCK_DIRECTORY}
             cell.set_property("stock-id", icons[state])
 
+        def add_dir(button):
+            dialog = Gtk.FileChooserDialog("Choisissez le dossier à ajouter",
+                                           self, Gtk.FileChooserAction.SELECT_FOLDER)
+            dialog.add_buttons(Gtk.STOCK_CANCEL, 0,
+                               Gtk.STOCK_OK, 1)
+            if dialog.run() == 1:
+                url = GLib.filename_from_uri(dialog.get_uri(), "")
+                dialog.destroy()
+                self.manager.add_user_directory(url)
+                self.__fill_view()
+
         bigBox = Gtk.VBox(False, 5)
         self.notebook.append_page(bigBox, Gtk.Label("Home"))
 
@@ -510,7 +524,9 @@ class Window(Gtk.Window):
         bigBox.pack_start(controlBox, False, False, 5)
 
         add_dirButton = Gtk.Button("Ajouter un dossier de photos")
+        add_dirButton.connect("clicked", add_dir)
         exportButton = Gtk.Button("Exporter les images sélectionnées")
+        exportButton.connect("clicked", lambda b: self.export())
         controlBox.pack_start(add_dirButton, True, True, 5)
         controlBox.pack_start(exportButton, True, True, 5)
 
