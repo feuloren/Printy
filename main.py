@@ -186,7 +186,8 @@ class Dir(object):
     """Represents a directory and manages its hidden file"""
 
     def __del__(self):
-        del self.state
+        if not(self.state.state in (FINISHED, EXPORTED)):
+            self.state.pause(self.current_picture)
 
     def get_current_picture_name(self):
         return self.current_picture
@@ -353,11 +354,15 @@ class Window(Gtk.Window):
 
     def reload_viewer(self):
         nb = self.workingDir.get_current_picture_number()
-        self.nbLabel.set_count(nb)
-        self.totalLabel.set_count(self.workingDir.get_total_count())
+        nb_pictures = self.workingDir.get_nb_pictures()
+        total = self.workingDir.get_total_count()
+        count = self.workingDir.get_current_picture_count()
+        self.picCountLabel.set_count(count)
+        self.totalLabel.set_count(total)
         self.drawingArea.set_image(self.workingDir.get_current_picture_uri())
-        fraction = float(nb-1) / self.workingDir.get_nb_pictures()
+        fraction = float(nb-1) / nb_pictures
         self.progressBar.set_fraction(fraction)
+        self.progressBar.set_text("Photo %s sur %s" % (nb-1, nb_pictures))
 
         self.notebook.set_current_page(1)
 
@@ -394,10 +399,10 @@ class Window(Gtk.Window):
         infoBox = Gtk.HBox(False, 5)
         viewerBox.pack_start(infoBox, False, True, 5)
         progressBar = Gtk.ProgressBar()
-        progressBar.set_fraction(22./144)
-        nbLabel = CountLabel("Photo n°%s", "Photo n°%s", 1)
-        totalLabel = CountLabel("%s photo à imprimer", "%s photos à imprimer", 14)
-        infoBox.pack_start(nbLabel, False, False, 5)
+        progressBar.set_show_text(True)
+        picCountLabel = CountLabel("À imprimer %s fois", "À imprimer %s fois", 0)
+        totalLabel = CountLabel("%s photo à imprimer", "%s photos à imprimer", 0)
+        infoBox.pack_start(picCountLabel, False, False, 5)
         infoBox.pack_start(progressBar, True, True, 5)
         infoBox.pack_start(totalLabel, False, False, 5)
 
@@ -446,7 +451,7 @@ class Window(Gtk.Window):
         previousButton.connect("clicked", lambda b: prev_picture())
         controlBox.pack_end(previousButton, False, False, 5)
 
-        self.progressBar, self.nbLabel, self.totalLabel, self.drawingArea = progressBar, nbLabel, totalLabel, drawingArea
+        self.progressBar, self.picCountLabel, self.totalLabel, self.drawingArea = progressBar, picCountLabel, totalLabel, drawingArea
 
     def __init_home(self):
         def row_activated(widget, path, column):
