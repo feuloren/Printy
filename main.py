@@ -492,6 +492,8 @@ class Window(Gtk.Window):
 
     def __fill_view(self):
         """Une fonction toute pleine de récursion :-)"""
+        self.tree.clear()
+
         dirs = copy.copy(self.manager.directories)
         iters = {}
 
@@ -511,13 +513,13 @@ class Window(Gtk.Window):
                     return iters[root]
                 else:
                     return do(root)
-            else:
-                return None
 
         for url in dirs:
             do(url)
 
-        self.view.expand_all()
+        for root in self.manager.root_dirs:
+            path = self.tree.get_path(iters[root])
+            self.view.expand_row(path, False)
 
     def __init__(self, manager):
         Gtk.Window.__init__(self)
