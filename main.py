@@ -498,14 +498,11 @@ class Window(Gtk.Window):
         def do(url):
             if not(iters.has_key(url)):
                 parent = get_or_make_parent(url)
-                return add(parent, url)
-
-        def add(parent, url):
-            iters[url] = iter_ = self.tree.append(parent)
-            self.tree.set(iter_, COLUMN_NAME, os.path.basename(url),
-                          COLUMN_STATE, dirs[url],
-                          COLUMN_URL, url)
-            return iter_
+                iters[url] = iter_ = self.tree.append(parent)
+                self.tree.set(iter_, COLUMN_NAME, os.path.basename(url),
+                              COLUMN_STATE, dirs[url],
+                              COLUMN_URL, url)
+                return iter_
 
         def get_or_make_parent(url):
             root = os.path.dirname(url)
