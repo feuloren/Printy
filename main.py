@@ -125,11 +125,13 @@ class Manager(object):
             raise DirDoesntExist(url)
 
         self.root_dirs.append(url)
+        self.save()
         os.path.walk(url, self.__index_dir, None)
 
     def remove_user_directory(self, url):
         if url in self.root_dirs:
             del self.root_dirs[self.root_dirs.index(url)]
+            self.save()
 
             for subdir in self.directories:
                 if subdir.startswith(url):
