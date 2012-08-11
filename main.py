@@ -3,6 +3,7 @@
 
 from gi.repository import Gtk, GdkPixbuf, GLib, GObject
 import os.path
+import mimetypes
 import copy
 
 #modes
@@ -256,7 +257,8 @@ class Dir(object):
             fnames.sort()
             statefile.write(NONE + "\n")
             for index, pic in enumerate(fnames):
-                if not(os.path.isdir(os.path.join(dirname, pic))) and pic[0] != '.':
+                if not(os.path.isdir(os.path.join(dirname, pic))) and pic[0] != '.' \
+                        and mimetypes.guess_type(pic)[0] == "image/jpeg":
                     statefile.write(pic + "/0\n")
             del fnames[:]
 
