@@ -435,6 +435,14 @@ class Window(Gtk.Window):
             self.workingDir = Dir(url)
             self.reload_viewer()
 
+        def set_icon(col, cell, model, iter_, data):
+            state = model[iter_][COLUMN_STATE]
+            icons = {"Paused": Gtk.STOCK_MEDIA_PAUSE,
+                     "Finished": Gtk.STOCK_APPLY,
+                     "Exported": Gtk.STOCK_FLOPPY,
+                     "None": Gtk.STOCK_DIRECTORY}
+            cell.set_property("stock-id", icons[state])
+
         bigBox = Gtk.VBox(False, 5)
         self.notebook.append_page(bigBox, Gtk.Label("Home"))
 
@@ -456,16 +464,16 @@ class Window(Gtk.Window):
         view.connect("row-activated", row_activated)
         scroll.add(view)
 
-        text = Gtk.CellRendererText()
-        col = Gtk.TreeViewColumn("S")
-        col.pack_start(text, False)
-        col.add_attribute(text, "text", COLUMN_STATE)
-        view.append_column(col)
+        box = Gtk.CellAreaBox()
+        pixbuf = Gtk.CellRendererPixbuf()
+        box.pack_start(pixbuf, False, False, True)
 
         text = Gtk.CellRendererText()
-        col = Gtk.TreeViewColumn("Nom du dossier")
-        col.pack_start(text, True)
-        col.add_attribute(text, "text", COLUMN_NAME)
+        box.pack_start(text, True, False, False)
+        box.attribute_connect(text, "text", COLUMN_NAME)
+
+        col = Gtk.TreeViewColumn.new_with_area(box)
+        col.set_cell_data_func(pixbuf, set_icon);
         view.append_column(col)
 
         self.tree = Gtk.TreeStore(GObject.TYPE_STRING, GObject.TYPE_STRING, GObject.TYPE_STRING)
