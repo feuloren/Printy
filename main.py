@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from gi.repository import Gtk, GdkPixbuf, GLib, GObject
+from gi.repository import Gtk, Gdk, GdkPixbuf, GLib, GObject
 import os.path
 import mimetypes
 import copy
@@ -300,49 +300,52 @@ class CountLabel(Gtk.Label):
         self.set_count(count)
 
 class MagicImage(Gtk.DrawingArea):
-    hsize = 0
-    vsize = 0
-    imgheight = 0
-    imgwidth = 0
-    image_url = ""
 
     def set_image(self, url):
         if not(os.path.isfile(url)):
             raise FileDoesntExist()
         self.image_url = url
 
+        self.original_pixbuf = GdkPixbuf.Pixbuf.new_from_file(url)
+        if self.get_realized():
+            self.__configure(self, None)
+            self.queue_draw()
+
     def __draw(self, widget, cr):
-        width, height = widget.get_allocated_width(), widget.get_allocated_height()
-        if width != self.hsize or height != self.vsize:
-            self.hsize, self.vsize = width, height
+        if not(self.pixbuf):
+            return
 
-        if self.imgwidth > width and self.imgheight > height:
-            #on redimensionne
-            pass
-        elif self.imgwidth < width and self.imgheight > height:
-            pass
-        elif self.imgheight < height and self.imgwidth > width:
-            pass
-        else:
-            pass
-
-        #set_source_pixbuf(resized_pixbuf, xanchor, yanchor)
-        cr.set_source_rgb(1, 0.5, 0.25)
-        cr.rectangle(0, 0, self.imgwidth, self.imgheight)
-        cr.fill()
+        Gdk.cairo_set_source_pixbuf(cr, self.pixbuf, self.xorig, self.yorig)
+        cr.paint()
 
     def __configure(self, widget, event):
-        pass
+        width, height = widget.get_allocated_width(), widget.get_allocated_height()
+        imgwidth, imgheight = self.original_pixbuf.get_width(), self.original_pixbuf.get_height()
+
+        if imgwidth <= width and imgheight <= height:
+            self.pixbuf = self.original_pixbuf
+        else:
+            if float(width)/height <= float(imgwidth)/imgheight:
+                imgheight *= float(width)/imgwidth
+                imgwidth = width
+            else:
+                imgwidth *= float(height)/imgheight
+                imgheight = height
+            self.pixbuf = self.original_pixbuf.scale_simple(imgwidth, imgheight, GdkPixbuf.InterpType.BILINEAR)
+        self.xorig = (width - imgwidth)/2
+        self.yorig = (height - imgheight)/2
 
     def __init__(self):
         Gtk.DrawingArea.__init__(self)
         self.set_size_request(640, 480)
         self.connect("draw", self.__draw)
+        self.connect_after("configure-event", self.__configure)
         self.set_hexpand(True)
         self.set_vexpand(True)
 
-        self.p = GdkPixbuf.Pixbuf.new_from_file("/home/florent/Images/4137393_700b.jpg")#"/home/florent/Images/2005-11 Paris grand palais/Paris Grand Palais-11.JPG")
-        self.imgwidth, self.imgheight = self.p.get_width(), self.p.get_height()
+        self.pixbuf = None
+        self.original_pixbuf = None
+        self.image_url = ""
 
 class Window(Gtk.Window):
     """Display the pictures, the total count, progress bar..."""
