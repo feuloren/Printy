@@ -30,6 +30,14 @@ class BadStateFile(StandardError):
     def __init__(self, string):
         self.message = string
 
+class NoImgInDir(StandardError):
+    def __init__(self, string):
+        self.message = string
+
+class FileIsNotAnImage(StandardError):
+    def __init__(self, string):
+        self.message = string
+
 class State(object):
     def __del__(self):
         self.save()
@@ -69,6 +77,8 @@ class State(object):
                 self.state = s
                 if self.state == PAUSED:
                     self.paused_picture = var[1].split("\n")[0]
+            else:
+                raise BadStateFile(line)
         except IndexError:
             raise BadStateFile(line)
 
@@ -92,7 +102,7 @@ class State(object):
                     pic = a[0]
                     count = int(a[1])
                 except ValueError, IndexError:
-                    continue
+                    raise BadStateFile(line)
 
                 self.pictures.append(pic)
                 self.counts[pic] = count
@@ -189,7 +199,10 @@ class Dir(object):
 
     def __del__(self):
         if not(self.state.state in (FINISHED, EXPORTED)):
-            self.state.pause(self.current_picture)
+            try:
+                self.state.pause(self.current_picture)
+            except:
+                return
 
     def get_current_picture_name(self):
         return self.current_picture
@@ -277,11 +290,18 @@ class Dir(object):
         if not(os.path.isfile(sfile)):
             self.__fill_state_file(sfile)
 
-        self.state = State(sfile)
+        try:
+            self.state = State(sfile)
+        except BadStateFile:
+            self.__fill_state_file(sfile)
+            self.state = State(sfile)
+
         if self.state.paused_picture != "":
             self.current_picture = self.state.paused_picture
-        else:
+        elif len(self.state.pictures) > 0:
             self.current_picture = self.state.pictures[0]
+        else:
+            raise NoImgInDir(directory)
 
 class CountLabel(Gtk.Label):
     singular_message = "%s"
@@ -309,7 +329,10 @@ class MagicImage(Gtk.DrawingArea):
             raise FileDoesntExist()
         self.image_url = url
 
-        self.original_pixbuf = GdkPixbuf.Pixbuf.new_from_file(url)
+        try:
+            self.original_pixbuf = GdkPixbuf.Pixbuf.new_from_file(url)
+        except:
+            raise FileIsNotAnImage(url)
         if self.get_realized():
             self.__configure(self, None)
             self.queue_draw()
@@ -350,6 +373,28 @@ class MagicImage(Gtk.DrawingArea):
         self.original_pixbuf = None
         self.image_url = ""
 
+class LittleDialog(Gtk.Dialog):
+    """A dialog with  simple OK button and a line of text"""
+    def display(self):
+        self.run()
+        self.destroy()
+
+    def __init__(self, parent, title, text):
+        Gtk.Dialog.__init__(self)
+        self.set_title(title)
+        self.set_transient_for(parent)
+        self.add_button(Gtk.STOCK_OK, 1)
+
+        box = self.get_content_area()
+        intitle = Gtk.Label()
+        intitle.set_markup("<b><big>%s</big></b>" % title)
+        box.pack_start(intitle, True, True, 10)
+        intitle.show()
+
+        label = Gtk.Label(text)
+        box.pack_start(label, True, True, 10)
+        label.show()
+
 class Window(Gtk.Window):
     """Display the pictures, the total count, progress bar..."""
     workingDir = None
@@ -358,10 +403,13 @@ class Window(Gtk.Window):
         print "I'm gonna export"
 
     def reload_viewer(self):
+        #get all the data from the current Dir
         nb = self.workingDir.get_current_picture_number()
         nb_pictures = self.workingDir.get_nb_pictures()
         total = self.workingDir.get_total_count()
         count = self.workingDir.get_current_picture_count()
+
+        #Update the widgets
         self.picCountLabel.set_count(count)
         self.totalLabel.set_count(total)
         self.drawingArea.set_image(self.workingDir.get_current_picture_uri())
@@ -379,21 +427,26 @@ class Window(Gtk.Window):
 
     def process_move(self, next_pic):
         if next_pic:
-            self.reload_viewer()
+            try:
+                self.reload_viewer()
+            except FileIsNotAnImage:
+                self.process_move(self.workingDir.next_picture())
         else:
             if self.workingDir.get_current_picture_number() != 1:
-#Show a little dialog that says "hey there is no more pictures to process" and give the number of pictures to print
+                dialog = LittleDialog(self, "Félicitations", "Il n'y a plus d'image à traiter dans ce dossier")
+                dialog.display()
                 self.workingDir.set_finished()
                 self.reload_home()
 
     def reload_home(self):
         if self.workingDir:
+            #update the treeview and the underlying Manager
             state = self.workingDir.get_state()
             url = self.workingDir.directory
             self.workingDir = None
 
             self.manager.update_dir_state(url, state)
-            self.__fill_view()
+            self.__fill_view() #ugly
 
         self.notebook.set_current_page(0)
 
@@ -431,7 +484,6 @@ class Window(Gtk.Window):
             try:
                 no = int(button.get_label())
             except ValueError:
-                print "Caught you bitch !"
                 return
             self.set_count(no)
         for i in range(5):
@@ -461,8 +513,13 @@ class Window(Gtk.Window):
     def __init_home(self):
         def row_activated(widget, path, column):
             url = self.tree[path][COLUMN_URL]
-            self.workingDir = Dir(url)
-            self.reload_viewer()
+            try:
+                self.workingDir = Dir(url)
+            except NoImgInDir:
+                dialog = LittleDialog(self, "Erreur", "Il n'y a aucune photo dans ce dossier")
+                dialog.display()
+            else:
+                self.reload_viewer()
 
         def set_icon(col, cell, model, iter_, data):
             state = model[iter_][COLUMN_STATE]
