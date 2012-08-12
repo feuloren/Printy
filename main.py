@@ -148,9 +148,9 @@ class Window(Gtk.Window):
                                Gtk.STOCK_OK, 1)
             if dialog.run() == 1:
                 url = GLib.filename_from_uri(dialog.get_uri(), "")
-                dialog.destroy()
                 self.manager.add_user_directory(url)
                 self.__fill_view()
+            dialog.destroy()
 
         bigBox = Gtk.VBox(False, 5)
         self.notebook.append_page(bigBox, Gtk.Label("Home"))
