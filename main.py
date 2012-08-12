@@ -94,7 +94,7 @@ class Window(Gtk.Window):
                 for i, count in enumerate(stats["counts"]):
                     if count > 0:
                         text += "	%s photos %s fois\n" % (count, i)
-                text += "\nSoit au total %s de photos" % stats["size"]
+                text += "\nSoit au total %s de photos" % GLib.format_size(stats["size"])
 
                 info_label.set_label(text)
             if widget is progress:
