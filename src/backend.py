@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-import os.path
+import os, os.path
 import mimetypes
 
 from constants import *
@@ -88,14 +88,90 @@ class Manager(object):
             for root in self.root_dirs:
                 sfile.write(root + "\n")
 
+    def prepare_export_list(self, mode):
+        self.mode = mode
+        if mode in EXPORT_MODES:
+            self.export_list = {}
+            self.counts_sum = [0,] * (MAX_COUNT + 1)
+            self.total_size = 0
+
+            for info in self.get_directories():
+                #select only the directories marked as finished
+                if info[1] != FINISHED:
+                    continue
+                #Open dir and select every picture with count > 0
+                dir_ = Dir(info[0])
+                for pic in dir_.state.counts:
+                    count = dir_.state.counts[pic]
+                    if count > 0:
+                        pic_url = os.path.join(info[0], pic)
+                        self.export_list[pic_url] = count
+                        self.counts_sum[count] += 1
+
+                        #Get picture size
+                        file_size = os.stat(pic_url).st_size
+                        if mode is SUBDIR:
+                            self.total_size += file_size
+                        elif mode is DUPLICATE:
+                            self.total_size += file_size * count
+
+    def get_export_stats(self):
+        """Get total photos count, disk size to be occupied"""
+        if self.export_list:
+            return {"total": len(self.export_list),
+                    "size": self.total_size,
+                    "counts": self.counts_sum}
+        else:
+            return {"total": 0, "size": 0, "counts": []}
+
     def get_directories(self):
         """Returns: a tuple ((Dir_Name, State, (Subdir))...)"""
         for i in self.directories:
             yield (i, self.directories[i])
 
-    def export_to_directory(self, directory, dir_listing, mode):
+    def export_to_directory(self, directory, callback, finalize):
         """Export all the pictures marked for export in the directories given in parameter"""
-        pass
+        if not(callback):
+            callback = lambda a, b: a
+        def copy(orig, dest):
+            print orig, "->", dest
+
+        if os.path.isdir(directory) and self.export_list:
+            #Get the number of pictures to copy (e.g. for a progressbar)
+            to_copy = 0
+            for i in self.counts_sum:
+                to_copy += i
+
+            if self.mode is SUBDIR:
+                #first create the needed subdirectories
+                for i, j in enumerate(self.counts_sum):
+                    if j > 0:
+                        os.mkdir(os.path.join(directory, str(i)))
+
+                #then copy
+                for i, url in enumerate(self.export_list):
+                    count = self.export_list[url]
+                    dest = os.path.join(directory, str(count), "Photo_%s.jpg" % i)
+                    copy(url, dest)
+                    callback(i, to_copy)
+            elif self.mode is DUPLICATE:
+                for i, url in enumerate(self.export_list):
+                    count = self.export_list[url]
+                    for j in range(count):
+                        dest = os.path.join(directory, "Photo_%s_%s.jpg" % (i, j))
+                        copy(url, dest)
+                        callback(i+j, to_copy)
+
+        self.export_list = []
+
+        #Mark FINISHED dirs as EXPORTED
+        for info in self.get_directories():
+            if info[1] == FINISHED:
+                self.directories[info[0]] = EXPORTED
+                Dir(info[0]).set_exported()
+
+        if finalize:
+            finalize()
 
     def add_user_directory(self, url):
         """Add a direcotory to the list of indexed directories"""
@@ -144,6 +220,7 @@ class Manager(object):
         self.root_dirs = []
         self.directories = {}
         self.settings_file = ""
+        self.export_list = []
 
         #first we read the list of root dirs
         self.settings_file = os.path.join(os.path.expanduser("~/.local/share"), "printy/settings")

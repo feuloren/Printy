@@ -3,6 +3,7 @@
 
 from gi.repository import Gtk, GLib, GObject
 import os.path
+import time
 import copy
 
 from src import *
@@ -12,7 +13,95 @@ class Window(Gtk.Window):
     workingDir = None
 
     def export(self):
-        print "I'm gonna export"
+        def add_page(widgets, ptype, title, complete):
+            box = Gtk.VBox()
+            for widget in widgets:
+                box.pack_start(widget, False, False, 10)
+
+            dialog.append_page(box)
+            dialog.set_page_type(box, ptype)
+            dialog.set_page_title(box, title)
+            dialog.set_page_complete(box, complete)
+
+            return box
+        dialog = Gtk.Assistant()
+        dialog.set_type_hint(Gdk.WindowTypeHint.DIALOG)
+        dialog.resize(600, 500)
+        dialog.connect("close", lambda a: dialog.destroy())
+        dialog.connect("cancel", lambda a: dialog.destroy())
+        dialog.connect("delete-event", lambda a, b: dialog.destroy())
+        dialog.set_transient_for(self)
+        dialog.set_modal(True)
+        dialog.set_destroy_with_parent(True)
+        dialog.set_title("Export des photos")
+
+        #First page we chooser the export mode
+        subdir = Gtk.RadioButton.new_with_label(None, "Créer des sous-répertoires")
+        duplicate = Gtk.RadioButton.new_with_label_from_widget(subdir, "Dupliquer les photos")
+
+        mode_chooser = add_page((subdir, duplicate), Gtk.AssistantPageType.INTRO,
+                                "Choix du mode d'export", True)
+
+        #Then we display the number of images to be displayed and the amount of disk it will take
+        info_label = Gtk.Label("")
+        info = add_page((info_label,), Gtk.AssistantPageType.CONTENT,
+                        "Résumé", True)
+
+        #Then choose the folder
+        folder_chooser = Gtk.FileChooserWidget(Gtk.FileChooserAction.SELECT_FOLDER)
+
+        dialog.append_page(folder_chooser)
+        dialog.set_page_type(folder_chooser, Gtk.AssistantPageType.CONFIRM)
+        dialog.set_page_title(folder_chooser, "Où exporter les photos ?")
+
+        def selection(c):
+            url = folder_chooser.get_filename()
+            if url and os.path.isdir(url):
+                dialog.set_page_complete(folder_chooser, True)
+            else:
+                dialog.set_page_complete(folder_chooser, False)
+        folder_chooser.connect("selection-changed", selection)
+
+        #Then we export, shiny progressbar
+        progress_text = Gtk.Label("<b>Export des photos en cours...</b>")
+        progress_text.set_use_markup(True)
+        progressbar = Gtk.ProgressBar()
+        progress = add_page((progress_text, progressbar), Gtk.AssistantPageType.PROGRESS,
+                            "Export...", False)
+
+        #Finally we congratulate the happy user
+        happy_text = Gtk.Label("<b><big>Félicitations !</big></b>\nL'export des photos s'est déroulé correctement, vous pouvez maintenant les faire développer")
+        happy_text.set_use_markup(True)
+        add_page((happy_text,), Gtk.AssistantPageType.SUMMARY,
+                 "The End", True)
+
+        def update_progress(i, total):
+            progressbar.set_fraction(float(i)/total)
+        def finalize():
+            progressbar.set_fraction(1)
+            dialog.commit()
+            dialog.set_page_complete(progress, True)
+            self.__fill_view()
+        def prepare(assistant, widget):
+            if widget is info:
+                if subdir.get_active():
+                    mode = SUBDIR
+                else:
+                    mode = DUPLICATE
+                self.manager.prepare_export_list(mode)
+                stats = self.manager.get_export_stats()
+                text = "Au total, %s photos vont exportées dont\n" % stats["total"]
+                for i, count in enumerate(stats["counts"]):
+                    if count > 0:
+                        text += "	%s photos %s fois\n" % (count, i)
+                text += "\nSoit au total %s de photos" % stats["size"]
+
+                info_label.set_label(text)
+            if widget is progress:
+                copy_in = folder_chooser.get_filename()
+                GLib.idle_add(lambda : self.manager.export_to_directory(copy_in, update_progress, finalize))
+        dialog.connect("prepare", prepare)
+        dialog.show_all()
 
     def reload_viewer(self):
         #get all the data from the current Dir
@@ -98,7 +187,7 @@ class Window(Gtk.Window):
             except ValueError:
                 return
             self.set_count(no)
-        for i in range(5):
+        for i in range(MAX_COUNT + 1):
             button = Gtk.Button(str(i))
             controlBox.pack_start(button, False, False, 5)
             button.connect("clicked", get_count_button)

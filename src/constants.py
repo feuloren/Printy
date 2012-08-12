@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 
+MAX_COUNT = 4
+
 #modes
-(SUBDIR,
- DUPLICATE) = range(2)
+EXPORT_MODES = (SUBDIR,
+               DUPLICATE) = range(2)
 
 #tree model columns
 (COLUMN_NAME,
