@@ -24,6 +24,7 @@ class Window(Gtk.Window):
             dialog.set_page_complete(box, complete)
 
             return box
+        #We use a GtkAssistant but we want it displayed as a modal dialog
         dialog = Gtk.Assistant()
         dialog.set_type_hint(Gdk.WindowTypeHint.DIALOG)
         dialog.resize(600, 500)
@@ -78,27 +79,38 @@ class Window(Gtk.Window):
         def update_progress(i, total):
             progressbar.set_fraction(float(i)/total)
         def finalize():
+            #Export is done, set the progressbar to 1 so it's pretty
+            #prevent users fom going to previous steps (commit)
+            #and __fill_view because some dirs state were updated
             progressbar.set_fraction(1)
             dialog.commit()
             dialog.set_page_complete(progress, True)
             self.__fill_view()
         def prepare(assistant, widget):
             if widget is info:
+                #In this page we display interesting infomation about the export
                 if subdir.get_active():
                     mode = SUBDIR
                 else:
                     mode = DUPLICATE
                 self.manager.prepare_export_list(mode)
                 stats = self.manager.get_export_stats()
+
+                #Number of pictures to be exported
                 text = "Au total, %s photos vont exportées dont\n" % stats["total"]
+                #Number of picture fo each count
                 for i, count in enumerate(stats["counts"]):
                     if count > 0:
                         text += "	%s photos %s fois\n" % (count, i)
+                #Disk size to be taken by the export (depends on the mode)
                 text += "\nSoit au total %s de photos" % GLib.format_size(stats["size"])
 
                 info_label.set_label(text)
             if widget is progress:
                 copy_in = folder_chooser.get_filename()
+                #We can't start the export right now because it would block the UI on the choose folde page
+                #and we wouldn't see the progressbar
+                #so we set it to be started we the mainloop no more stuff to process and page is changed
                 GLib.idle_add(lambda : self.manager.export_to_directory(copy_in, update_progress, finalize))
         dialog.connect("prepare", prepare)
         dialog.show_all()
@@ -128,11 +140,17 @@ class Window(Gtk.Window):
 
     def process_move(self, next_pic):
         if next_pic:
+            #Try to change the displayed image
+            #If the file is not an image and GdkPixbuf blows up
+            #we just go to the next image
             try:
                 self.reload_viewer()
             except FileIsNotAnImage:
                 self.process_move(self.workingDir.next_picture())
         else:
+            #next_pic is None
+            #if we're on the last picture we display a friendly message and get back home
+            #else we just do nothing because we probably are on the first picture
             if self.workingDir.get_current_picture_number() != 1:
                 dialog = LittleDialog(self, "Félicitations", "Il n'y a plus d'image à traiter dans ce dossier")
                 dialog.display()
@@ -155,6 +173,9 @@ class Window(Gtk.Window):
         viewerBox = Gtk.VBox()
         self.notebook.append_page(viewerBox, Gtk.Label("Viewer"))
 
+        #Top bar : display the count for the current picture,
+        #our position in the list of pictures (progressbar)
+        #and the number of pictures to be exported as now
         infoBox = Gtk.HBox(False, 5)
         viewerBox.pack_start(infoBox, False, True, 5)
         progressBar = Gtk.ProgressBar()
@@ -165,9 +186,12 @@ class Window(Gtk.Window):
         infoBox.pack_start(progressBar, True, True, 5)
         infoBox.pack_start(totalLabel, False, False, 5)
 
+        #Display the image, it automagically adapts the image size to use the maximum
+        #available space possible
         drawingArea = MagicImage()
         viewerBox.pack_start(drawingArea, True, True, 0)
 
+        #Bottom bar with all the action buttons
         controlBox = Gtk.HBox(False, 5)
         viewerBox.pack_start(controlBox, False, False, 5)
         def back():
@@ -182,14 +206,15 @@ class Window(Gtk.Window):
 
         #count buttons
         def get_count_button(button):
-            try:
-                no = int(button.get_label())
-            except ValueError:
-                return
+            no = button.get_data("count")
             self.set_count(no)
         for i in range(MAX_COUNT + 1):
             button = Gtk.Button(str(i))
             controlBox.pack_start(button, False, False, 5)
+            #We can't just use a lambda calling set_count(i)
+            #so we store the current i in the button (GObject)
+            #and we'll retrieve it later
+            button.set_data("count", i)
             button.connect("clicked", get_count_button)
 
         space2 = Gtk.Label(" ")
@@ -213,16 +238,19 @@ class Window(Gtk.Window):
 
     def __init_home(self):
         def row_activated(widget, path, column):
+            #callback for treeview's row activated
+            #if workingDir blows up because there's no picture we display a message
             url = self.tree[path][COLUMN_URL]
             try:
                 self.workingDir = Dir(url)
             except NoImgInDir:
-                dialog = LittleDialog(self, "Erreur", "Il n'y a aucune photo dans ce dossier")
+                dialog = LittleDialog(self, "Dommage !", "Il n'y a aucune photo dans ce dossier")
                 dialog.display()
             else:
                 self.reload_viewer()
 
         def set_icon(col, cell, model, iter_, data):
+            #based on the dir state we display an icon
             state = model[iter_][COLUMN_STATE]
             icons = {PAUSED: Gtk.STOCK_MEDIA_PAUSE,
                      FINISHED: Gtk.STOCK_APPLY,
@@ -231,12 +259,14 @@ class Window(Gtk.Window):
             cell.set_property("stock-id", icons[state])
 
         def add_dir(button):
+            #Just display the dialog and if the user selects a folder get the filename
+            #and add it to the manager
             dialog = Gtk.FileChooserDialog("Choisissez le dossier à ajouter",
                                            self, Gtk.FileChooserAction.SELECT_FOLDER)
             dialog.add_buttons(Gtk.STOCK_CANCEL, 0,
                                Gtk.STOCK_OK, 1)
             if dialog.run() == 1:
-                url = GLib.filename_from_uri(dialog.get_uri(), "")
+                url = dialog.get_filename()
                 self.manager.add_user_directory(url)
                 self.__fill_view()
             dialog.destroy()
@@ -262,6 +292,7 @@ class Window(Gtk.Window):
         view.connect("row-activated", row_activated)
         scroll.add(view)
 
+        #We want only one column with the state icon and then the folder name
         box = Gtk.CellAreaBox()
         pixbuf = Gtk.CellRendererPixbuf()
         box.pack_start(pixbuf, False, False, True)
@@ -274,6 +305,7 @@ class Window(Gtk.Window):
         col.set_cell_data_func(pixbuf, set_icon);
         view.append_column(col)
 
+        #columns : NAME, STATE, URL
         self.tree = Gtk.TreeStore(GObject.TYPE_STRING, GObject.TYPE_STRING, GObject.TYPE_STRING)
         self.tree.set_sort_column_id(COLUMN_NAME, Gtk.SortType.ASCENDING)
         view.set_model(self.tree)
@@ -325,10 +357,13 @@ class Window(Gtk.Window):
         Gtk.Window.__init__(self)
         self.set_title("Printy")
         self.connect("delete-event", lambda a, b: quit())
+        #We want something pretty (with Adwaita it is)
         self.get_settings().set_property("gtk-application-prefer-dark-theme", True)
         self.set_hide_titlebar_when_maximized(True)
         self.maximize()
 
+        #The two "modes" (home and viewer) are in a notebook
+        #and we just change the current page we necessary
         self.notebook = Gtk.Notebook()
         self.notebook.set_show_tabs(False)
         self.add(self.notebook)
