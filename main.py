@@ -165,7 +165,18 @@ class Window(Gtk.Window):
             self.workingDir = None
 
             self.manager.update_dir_state(url, state)
-            self.__fill_view() #ugly
+
+            def search(model, iter, column, data):
+                while iter:
+                    if model[iter][column] == data:
+                        return iter
+                    result = search(model, model.iter_children(iter), column, data)
+                    if result:
+                        return result
+                    iter = model.iter_next(iter)
+                return None
+            iter = search(self.tree, self.tree.get_iter_first(), COLUMN_URL, url)
+            self.tree[iter][COLUMN_STATE] = state
 
         self.notebook.set_current_page(0)
 
