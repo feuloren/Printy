@@ -70,7 +70,7 @@ class State(object):
                 try:
                     pic = a[0]
                     count = int(a[1])
-                except ValueError, IndexError:
+                except (ValueError, IndexError):
                     raise BadStateFile(line)
 
                 self.pictures.append(pic)
