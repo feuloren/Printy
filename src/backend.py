@@ -3,6 +3,7 @@
 import os, os.path
 import mimetypes
 from shutil import copy2
+from collections import OrderedDict
 
 from constants import *
 from errors import *
@@ -17,12 +18,12 @@ class State(object):
                 statefile.write(PAUSED + "/" +self.paused_picture + "\n")
             else:
                 statefile.write(self.state + "\n")
-            for pic in self.pictures:
-                statefile.write(pic + "/" + str(self.counts[pic]) + "\n")
+            for pic, count in self.pictures.iteritems():
+                statefile.write(pic + "/" + str(count) + "\n")
 
     def set_picture_count(self, picture, count):
-        if picture in self.pictures:
-            self.counts[picture] = count
+        if self.pictures.has_key(picture):
+            self.pictures[picture] = count
 
     def set_exported(self):
         self.state = EXPORTED
@@ -33,7 +34,7 @@ class State(object):
         self.save()
 
     def pause(self, picture):
-        if picture in self.pictures:
+        if self.pictures.has_key(picture):
             self.state = PAUSED
             self.paused_picture = picture
             self.save()
@@ -52,8 +53,7 @@ class State(object):
             raise BadStateFile(line)
 
     def __init__(self, file_uri):
-        self.pictures = []
-        self.counts = {}
+        self.pictures = OrderedDict()
         self.state = NONE
         self.paused_picture = ""
 
@@ -73,8 +73,7 @@ class State(object):
                 except (ValueError, IndexError):
                     raise BadStateFile(line)
 
-                self.pictures.append(pic)
-                self.counts[pic] = count
+                self.pictures[pic] = count
 
 class Manager(object):
     """The Manager deals with directories listing and plain text file management
@@ -96,14 +95,13 @@ class Manager(object):
             self.counts_sum = [0,] * (MAX_COUNT + 1)
             self.total_size = 0
 
-            for info in self.get_directories():
+            for url, state in self.directories.iteritems():
                 #select only the directories marked as finished
-                if info[1] != FINISHED:
+                if state != FINISHED:
                     continue
                 #Open dir and select every picture with count > 0
-                dir_ = Dir(info[0])
-                for pic in dir_.state.counts:
-                    count = dir_.state.counts[pic]
+                dir_ = Dir(url)
+                for pic, count in dir_.state.pictures.iteritems():
                     if count > 0:
                         pic_url = os.path.join(info[0], pic)
                         self.export_list[pic_url] = count
@@ -126,9 +124,7 @@ class Manager(object):
             return {"total": 0, "size": 0, "counts": []}
 
     def get_directories(self):
-        """Returns: a tuple ((Dir_Name, State, (Subdir))...)"""
-        for i in self.directories:
-            yield (i, self.directories[i])
+        return self.directories.iteritems()
 
     def export_to_directory(self, directory, callback, finalize):
         """Export all the pictures marked for export in the directories given in parameter"""
@@ -164,10 +160,10 @@ class Manager(object):
         self.export_list = []
 
         #Mark FINISHED dirs as EXPORTED
-        for info in self.get_directories():
-            if info[1] == FINISHED:
-                self.directories[info[0]] = EXPORTED
-                Dir(info[0]).set_exported()
+        for url, state in self.get_directories():
+            if state == FINISHED:
+                self.directories[url] = EXPORTED
+                Dir(url).set_exported()
 
         if finalize:
             finalize()
@@ -257,7 +253,7 @@ class Dir(object):
 
     def get_current_picture_count(self):
         """Returns the number of time the current picture should be printed"""
-        return self.state.counts[self.current_picture]
+        return self.state.pictures[self.current_picture]
 
     def set_count(self, count):
         """Define the number of times a picture should be printed
@@ -266,9 +262,10 @@ class Dir(object):
         return self.next_picture()
 
     def __move(self, count):
-        i = self.state.pictures.index(self.current_picture)
+        keys = self.state.pictures.keys()
+        i = keys.index(self.current_picture)
         try:
-            self.current_picture = self.state.pictures[i+count]
+            self.current_picture = keys[i+count]
         except IndexError:
             return None
 
@@ -284,13 +281,13 @@ class Dir(object):
 
     def get_total_count(self):
         total = 0
-        for picname in self.state.pictures:
-            total += self.state.counts[picname]
+        for picname, count in self.state.pictures.iteritems():
+            total += count
 
         return total
 
     def get_current_picture_number(self):
-        return self.state.pictures.index(self.current_picture) + 1
+        return self.state.pictures.keys().index(self.current_picture) + 1
 
     def get_nb_pictures(self):
         """Returns the number of pictures in this directory"""
@@ -343,6 +340,6 @@ class Dir(object):
         if self.state.paused_picture != "":
             self.current_picture = self.state.paused_picture
         elif len(self.state.pictures) > 0:
-            self.current_picture = self.state.pictures[0]
+            self.current_picture = self.state.pictures.keys()[0]
         else:
             raise NoImgInDir(directory)
