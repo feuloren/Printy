@@ -2,6 +2,7 @@
 
 import os, os.path
 import mimetypes
+from shutil import copy2
 
 from constants import *
 from errors import *
@@ -133,8 +134,6 @@ class Manager(object):
         """Export all the pictures marked for export in the directories given in parameter"""
         if not(callback):
             callback = lambda a, b: a
-        def copy(orig, dest):
-            print orig, "->", dest
 
         if os.path.isdir(directory) and self.export_list:
             #Get the number of pictures to copy (e.g. for a progressbar)
@@ -152,7 +151,7 @@ class Manager(object):
                 for i, url in enumerate(self.export_list):
                     count = self.export_list[url]
                     dest = os.path.join(directory, str(count), "Photo_%s.jpg" % i)
-                    copy(url, dest)
+                    copy2(url, dest)
                     callback(i, to_copy)
             elif self.mode is DUPLICATE:
                 for i, url in enumerate(self.export_list):
