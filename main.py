@@ -4,7 +4,6 @@
 from gi.repository import Gtk, GLib, GObject
 import os.path
 import time
-import copy
 
 from src import *
 
@@ -339,7 +338,6 @@ class Window(Gtk.Window):
         """Une fonction toute pleine de récursion :-)"""
         self.tree.clear()
 
-        dirs = copy.copy(self.manager.directories)
         iters = {}
 
         def do(url):
@@ -347,19 +345,19 @@ class Window(Gtk.Window):
                 parent = get_or_make_parent(url)
                 iters[url] = iter_ = self.tree.append(parent)
                 self.tree.set(iter_, COLUMN_NAME, os.path.basename(url),
-                              COLUMN_STATE, dirs[url],
+                              COLUMN_STATE, self.manager.directories[url],
                               COLUMN_URL, url)
                 return iter_
 
         def get_or_make_parent(url):
             root = os.path.dirname(url)
-            if dirs.has_key(root):
+            if self.manager.directories.has_key(root):
                 if iters.has_key(root):
                     return iters[root]
                 else:
                     return do(root)
 
-        for url in dirs:
+        for url in self.manager.directories:
             do(url)
 
         for root in self.manager.root_dirs:
