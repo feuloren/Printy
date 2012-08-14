@@ -46,7 +46,7 @@ class Window(Gtk.Window):
         #Then we display the number of images to be displayed and the amount of disk it will take
         info_label = Gtk.Label("")
         info = add_page((info_label,), Gtk.AssistantPageType.CONTENT,
-                        "Résumé", True)
+                        "Résumé", False)
 
         #Then choose the folder
         folder_chooser = Gtk.FileChooserWidget(Gtk.FileChooserAction.CREATE_FOLDER)
@@ -106,6 +106,8 @@ class Window(Gtk.Window):
                 text += "\nSoit au total %s de photos" % GLib.format_size(stats["size"])
 
                 info_label.set_label(text)
+
+                dialog.set_page_complete(info, stats["total"] > 0)
             if widget is progress:
                 copy_in = folder_chooser.get_filename()
                 #We can't start the export right now because it would block the UI on the choose folde page
