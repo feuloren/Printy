@@ -49,7 +49,7 @@ class Window(Gtk.Window):
                         "Résumé", True)
 
         #Then choose the folder
-        folder_chooser = Gtk.FileChooserWidget(Gtk.FileChooserAction.SELECT_FOLDER)
+        folder_chooser = Gtk.FileChooserWidget(Gtk.FileChooserAction.CREATE_FOLDER)
 
         dialog.append_page(folder_chooser)
         dialog.set_page_type(folder_chooser, Gtk.AssistantPageType.CONFIRM)
