@@ -220,7 +220,7 @@ class Manager(object):
         #first we read the list of root dirs
         self.settings_file = os.path.join(os.path.expanduser("~/.local/share"), "printy/settings")
         if not(os.path.isfile(self.settings_file)):
-            open(settings_file, "w")
+            open(self.settings_file, "w")
 
         with open(self.settings_file, "r") as sfile:
             line = sfile.readline()
