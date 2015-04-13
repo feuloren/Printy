@@ -8,14 +8,14 @@ class FileDoesntExist(IOError):
     def _init__(self, string):
         self.message = string
 
-class BadStateFile(StandardError):
+class BadStateFile(Exception):
     def __init__(self, string):
         self.message = string
 
-class NoImgInDir(StandardError):
+class NoImgInDir(Exception):
     def __init__(self, string):
         self.message = string
 
-class FileIsNotAnImage(StandardError):
+class FileIsNotAnImage(Exception):
     def __init__(self, string):
         self.message = string
